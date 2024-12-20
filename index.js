@@ -1,22 +1,27 @@
-const express = require('express');
-const { Server } = require('socket.io');
-const MongoClient = require('mongodb').MongoClient;
-const http = require('http'); // Import http module
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const cors = require('cors');
-require('dotenv').config();
+import express from 'express';
+import { Server } from 'socket.io';
+import { MongoClient } from 'mongodb';
+import http from 'http';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import cors from 'cors';
+import { getLocalIP } from './functions/getIp.js';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const app = express();
 
-const host = process.env.HOST || '0.0.0.0';
+const localIp = getLocalIP();
+
+const host = localIp || process.env.HOST;
 const port = process.env.PORT || 3001;
 
-
-
-
 app.use(cors({
-  origin: [`http://localhost:3000`,`http://${host}:3000`,"http://115.99.19.93:3000"], // Allow requests from this origin
+  origin: [
+    `http://localhost:3000`,
+    `http://${host}:3000`,
+    "http://115.99.19.93:3000"
+  ],
   methods: ["GET", "POST"],
   credentials: true
 }));
@@ -24,12 +29,15 @@ app.use(cors({
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:3000",`http://${host}:3000`,"http://115.99.19.93:3000"], // Match this with your frontend origin
+    origin: [
+      "http://localhost:3000",
+      `http://${host}:3000`,
+      "http://115.99.19.93:3000"
+    ],
     methods: ["GET", "POST"],
     credentials: true
   }
 });
-
 
 app.use(express.json());
 
@@ -50,7 +58,7 @@ io.on('connection', (socket) => {
   socket.on('sendMessage', (data) => {
     console.log("sendMessage", data);
     const roomName = userRooms.get(socket.id);
-    io.to(`room_${data.targetUser}`).emit('receiveMessage', {...data, sentBy: 'targetUser'});
+    io.to(`room_${data.targetUser}`).emit('receiveMessage', { ...data, sentBy: 'targetUser' });
   });
 });
 
