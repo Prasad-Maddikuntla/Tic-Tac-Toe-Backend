@@ -12,7 +12,6 @@ dotenv.config();
 const app = express();
 
 const localIp = getLocalIP();
-
 const host = localIp || process.env.HOST;
 const port = process.env.PORT || 3001;
 
@@ -25,6 +24,30 @@ app.use(cors({
   methods: ["GET", "POST"],
   credentials: true
 }));
+
+app.use(express.json());
+
+const dbName = 'UsersDB';
+const url = 'mongodb://localhost:27017';
+
+const userConnections = new Map(); // Maintain socket connections for users
+
+// JWT Middleware for protected routes
+// const authenticateToken = (req, res, next) => {
+//   const token = req.headers['authorization']?.split(' ')[1];
+//   if (!token) return res.status(401).json({ error: 'Access token required' });
+
+//   jwt.verify(token, 'your-secret-key', (err, user) => {
+//     if (err) return res.status(403).json({ error: 'Invalid token' });
+//     req.user = user;
+//     next();
+//   });
+// };
+
+// Protected Example Route
+// app.get('/protected', authenticateToken, (req, res) => {
+//   res.json({ message: `Hello, ${req.user.username}!` });
+// });
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -39,29 +62,63 @@ const io = new Server(server, {
   }
 });
 
-app.use(express.json());
+// Authenticate Socket.IO Connections
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) return next(new Error('Authentication error'));
 
-const dbName = 'UsersDB';
-const url = 'mongodb://localhost:27017';
-
-const userRooms = new Map(); 
-io.on('connection', (socket) => {
-  console.log('A user connected');
-
-  socket.on('joinRoom', (username) => {
-    const roomName = `room_${username}`;
-    socket.join(roomName);
-    userRooms.set(socket.id, roomName);
-    console.log(`${username} joined room ${roomName}`);
-  });
-
-  socket.on('sendMessage', (data) => {
-    console.log("sendMessage", data);
-    const roomName = userRooms.get(socket.id);
-    io.to(`room_${data.targetUser}`).emit('receiveMessage', { ...data, sentBy: 'targetUser' });
+  jwt.verify(token, 'your-secret-key', (err, user) => {
+    if (err) return next(new Error('Authentication error'));
+    socket.user = user;
+    next();
   });
 });
 
+io.on('connection', (socket) => {
+  const { username } = socket.user;
+  console.log(`${username} connected`);
+
+  // Add socket to user's connections
+  if (!userConnections.has(username)) {
+    userConnections.set(username, new Set());
+  }
+  userConnections.get(username).add(socket.id);
+  
+  const userClientsConnections = userConnections.get(username);
+
+   console.log(userClientsConnections)
+
+
+  socket.on('sendMessage', (data) => {
+    const { targetUser, text } = data;
+    console.log(`Message from ${username} to ${targetUser}: ${text}`);
+  
+    // Retrieve target user's socket IDs
+    const targetSockets = userConnections.get(targetUser);
+    if (targetSockets && targetSockets.size > 0) {
+      targetSockets.forEach((socketId) => {
+        io.to(socketId).emit('receiveMessage', {
+          text,
+          sentBy: username,
+          timestamp: new Date()
+        });
+      });
+    } else {
+      console.log(`User ${targetUser} is not connected.`);
+    }
+  });
+  
+
+  socket.on('disconnect', () => {
+    console.log(`${username} disconnected`);
+    userConnections.get(username)?.delete(socket.id);
+    if (userConnections.get(username)?.size === 0) {
+      userConnections.delete(username);
+    }
+  });
+});
+
+// Database operations and routes remain unchanged
 app.get('/users', async (req, res) => {
   try {
     const client = new MongoClient(url, { useUnifiedTopology: true });
