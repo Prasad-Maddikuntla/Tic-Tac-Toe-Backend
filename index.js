@@ -107,6 +107,68 @@ io.on('connection', (socket) => {
       console.log(`User ${targetUser} is not connected.`);
     }
   });
+
+  socket.on('sendGameRequest', (data) => {
+    const { targetUser, text,type, sender } = data;
+    console.log(`${targetUser}: ${type}`);
+  
+    // Retrieve target user's socket IDs
+    const targetSockets = userConnections.get(targetUser);
+    if (targetSockets && targetSockets.size > 0) {
+      targetSockets.forEach((socketId) => {
+        io.to(socketId).emit('gameRequest', {
+          sender,
+          timestamp: new Date()
+        });
+      });
+    } else {
+      console.log(`User ${targetUser} is not connected.`);
+    }
+  });
+
+  socket.on('move', (data) => {
+    const { index,symbol,opponent } = data;
+  
+    // Retrieve target user's socket IDs
+    const targetSockets = userConnections.get(opponent);
+    if (targetSockets && targetSockets.size > 0) {
+      targetSockets.forEach((socketId) => {
+        io.to(socketId).emit('move', {
+          index,symbol,
+          timestamp: new Date()
+        });
+      });
+    } else {
+      console.log(`User ${opponent} is not connected.`);
+    }
+  });
+
+  socket.on('gameResponse', (data) => {
+    const { opponent, accepted, responseUser } = data;
+  
+    // Retrieve target user's socket IDs
+    const targetSockets = userConnections.get(opponent);
+    if (targetSockets && targetSockets.size > 0) {
+      targetSockets.forEach((socketId) => {
+        if(accepted) {
+          io.to(socketId).emit('gameRequestAccepted', {
+            responseUser,
+            accepted,
+            timestamp: new Date()
+          });
+        }
+        else {
+          io.to(socketId).emit('gameRequestDeclined', {
+            responseUser,
+            accepted,
+            timestamp: new Date()
+          });
+        }
+      });
+    } else {
+      console.log(`User  is not connected.`);
+    }
+  });
   
 
   socket.on('disconnect', () => {
